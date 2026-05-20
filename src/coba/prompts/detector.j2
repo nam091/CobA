@@ -1,0 +1,45 @@
+{# version: 2025-01.v1 — Detector prompt #}
+CONTEXT — CWE knowledge (use ONLY these CWE ids, do not invent):
+{% for cwe in cwe_context %}
+- {{cwe.cwe_id}}: {{cwe.title}}. {{cwe.text}}
+{% endfor %}
+
+CONTEXT — static-analyzer hints (may be wrong; treat as priors, not ground truth):
+{% if static_hints %}
+{% for h in static_hints %}
+- {{h.tool}} @ line {{h.line}}: {{h.message}} (rule={{h.rule_id}}, suspected={{h.cwe or "N/A"}}, severity={{h.severity.value}})
+{% endfor %}
+{% else %}
+(no static hints)
+{% endif %}
+
+CONTEXT — chunk metadata:
+File: {{chunk.file}}
+Function: {{chunk.function or "(top-level)"}} (lines {{chunk.line_start}}–{{chunk.line_end}})
+Language: {{chunk.language.value}}
+{% if chunk.imports %}
+Imports:
+{% for imp in chunk.imports %}{{imp}}
+{% endfor %}
+{% endif %}
+
+CODE:
+```{{chunk.language.value}}
+{{body}}
+```
+
+TASK
+Audit the code above for security vulnerabilities. For each vulnerability, output an
+object in the `findings` array with these fields:
+
+- `cwe`        : "CWE-<id>" — must be one of the CWE ids listed in CONTEXT above.
+- `severity`   : one of "low" | "medium" | "high" | "critical".
+- `confidence` : 0.0–1.0.
+- `line_start` / `line_end` : integer line numbers that fall within
+  [{{chunk.line_start}}, {{chunk.line_end}}]; cite the EXACT lines that contain the bug.
+- `title`      : ≤ 12 words.
+- `description`: ≤ 80 words; cite the data flow.
+- `data_flow`  : array of strings like ["source: ... @ L42", "sink: ... @ L46"].
+- `fix_suggestion`: optional ≤ 40 words.
+
+Return strict JSON: {"findings": [...]}. If no vulnerability, return {"findings": []}.
