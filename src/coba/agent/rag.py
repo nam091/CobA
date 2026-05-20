@@ -3,11 +3,18 @@
 For the v0 prototype we ship a tiny built-in CWE index (top-25). The
 ``scripts/build_cwe_kb.py`` script populates a larger ChromaDB collection
 from the MITRE CWE XML.
+
+The :class:`FewShotIndex` is independent: it loads hand-curated
+(vuln, safe) code pairs from ``src/coba/data/fewshot_examples.json``
+and serves them to the Detector prompt for in-context learning.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
 
 from coba.utils.logging import get_logger
 
@@ -20,6 +27,24 @@ class RagSnippet:
     cwe_id: str
     title: str
     text: str
+
+
+@dataclass
+class FewShotExample:
+    cwe: str
+    language: str
+    vuln: str
+    safe: str
+    explanation: str = ""
+
+    @property
+    def title(self) -> str:
+        return f"{self.cwe} · {self.language}"
+
+
+@dataclass
+class _FewShotBank:
+    examples: list[FewShotExample] = field(default_factory=list)
 
 
 # Tiny built-in CWE table — used until the full Chroma KB is built.
@@ -146,6 +171,91 @@ _BUILTIN_CWES: list[RagSnippet] = [
         "Dereferencing a possibly-NULL pointer. Add null checks.",
     ),
 ]
+
+
+_FEWSHOT_FILE = Path(__file__).resolve().parent.parent / "data" / "fewshot_examples.json"
+
+
+@lru_cache(maxsize=1)
+def _load_fewshot_bank(path: str = str(_FEWSHOT_FILE)) -> _FewShotBank:
+    """Load and cache the few-shot example bank from JSON.
+
+    Caching is keyed on the resolved file path so tests can swap the
+    file via ``FewShotIndex(path=...)`` without polluting other tests.
+    """
+    p = Path(path)
+    if not p.exists():
+        log.warning("rag.fewshot_missing", path=str(p))
+        return _FewShotBank()
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        log.warning("rag.fewshot_load_failed", path=str(p), error=str(exc))
+        return _FewShotBank()
+    raw_examples = data.get("examples", []) if isinstance(data, dict) else []
+    bank = _FewShotBank()
+    for item in raw_examples:
+        try:
+            bank.examples.append(
+                FewShotExample(
+                    cwe=str(item["cwe"]).upper(),
+                    language=str(item["language"]).lower(),
+                    vuln=str(item.get("vuln", "")),
+                    safe=str(item.get("safe", "")),
+                    explanation=str(item.get("explanation", "")),
+                )
+            )
+        except (KeyError, TypeError) as exc:
+            log.debug("rag.fewshot_bad_row", error=str(exc), row=item)
+    log.info("rag.fewshot_loaded", path=str(p), n=len(bank.examples))
+    return bank
+
+
+class FewShotIndex:
+    """Look up few-shot (vuln, safe) code pairs for a CWE / language combo.
+
+    The index is fully in-memory and deterministic: examples sharing the
+    same (CWE, language) are returned in the order they appear in the
+    underlying JSON file, so prompt rendering is reproducible.
+    """
+
+    def __init__(self, path: str | Path | None = None) -> None:
+        self._bank = _load_fewshot_bank(str(path) if path else str(_FEWSHOT_FILE))
+
+    def examples_for(
+        self,
+        cwe: str,
+        language: str | None = None,
+        *,
+        top_k: int = 2,
+    ) -> list[FewShotExample]:
+        """Return up to ``top_k`` examples matching the CWE.
+
+        When ``language`` is given, prefer examples in that language and
+        then fall back to other languages so the LLM always sees at
+        least one example when the CWE is covered.
+        """
+        if not cwe:
+            return []
+        cwe = cwe.upper()
+        same_lang: list[FewShotExample] = []
+        other_lang: list[FewShotExample] = []
+        for ex in self._bank.examples:
+            if ex.cwe != cwe:
+                continue
+            if language and ex.language == language.lower():
+                same_lang.append(ex)
+            else:
+                other_lang.append(ex)
+        # Same-language first, then everything else, capped at top_k.
+        return (same_lang + other_lang)[: max(0, top_k)]
+
+    @property
+    def n_examples(self) -> int:
+        return len(self._bank.examples)
+
+    def covered_cwes(self) -> list[str]:
+        return sorted({ex.cwe for ex in self._bank.examples})
 
 
 class RagIndex:
