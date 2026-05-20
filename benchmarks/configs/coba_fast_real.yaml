@@ -1,0 +1,21 @@
+# CobA-fast — real Orchestrator predictor (requires LLM access).
+#
+# Mirrors `coba_fast.yaml` but switches `predictor` from the default
+# `zero` (no-op, CI-friendly) to `orchestrator`, which wires the real
+# `coba.agent.loop.Orchestrator`. Use this once you have either:
+#
+#   * an LLM API key set in `.env` (OPENAI_API_KEY / ANTHROPIC_API_KEY
+#     / GOOGLE_API_KEY), or
+#   * a local Ollama instance running and `no_cloud: true` below.
+#
+# See `docs/06_LLM_INTEGRATION.md` for the full provider matrix.
+
+name: coba-fast-real
+dataset: primevul
+subset: 100
+detector_profile: fast
+seed: 42
+line_tolerance: 5
+require_cwe_match: true
+predictor: orchestrator
+no_cloud: false
