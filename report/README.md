@@ -9,7 +9,7 @@
 | 1 | `Chuong_1_Tong_quan.md` | Bản đầy đủ |
 | 2 | `Chuong_2_Co_so_ly_thuyet.md` | Bản đầy đủ |
 | 3 | `Chuong_3_Khao_sat_lien_quan.md` | Bản đầy đủ |
-| 4 | `Chuong_4_Thiet_ke_he_thong.md` | Skeleton (TODO M2) |
+| 4 | `Chuong_4_Thiet_ke_he_thong.md` | Bản đầy đủ |
 | 5 | `Chuong_5_Trien_khai.md` | Skeleton (TODO M3) |
 | 6 | `Chuong_6_Danh_gia.md` | Skeleton (TODO M4) |
 | 7 | `Chuong_7_Ket_luan.md` | Skeleton (TODO M5) |
