@@ -1,0 +1,7 @@
+name: baseline-semgrep
+dataset: primevul
+subset: 100
+detector_profile: semgrep-only
+seed: 42
+line_tolerance: 5
+require_cwe_match: true

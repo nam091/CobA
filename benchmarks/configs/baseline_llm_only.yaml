@@ -1,0 +1,7 @@
+name: baseline-llm-only
+dataset: primevul
+subset: 100
+detector_profile: llm-only
+seed: 42
+line_tolerance: 5
+require_cwe_match: true

@@ -122,18 +122,19 @@ Bảng kỳ vọng (sẽ điền sau khi eval):
 ## 6. Reproducibility
 
 ```bash
-make download-datasets
-make eval
-# → benchmarks/results/{date}/report.md
+bash scripts/download_datasets.sh   # primevul + owasp_benchmark + juliet
+coba eval                           # chạy mọi config trong benchmarks/configs/
+coba eval --config coba_fast        # hoặc chọn lẻ
+# → benchmarks/results/eval_report.{json,md,html,csv}
 ```
 
-`make eval` chạy:
-1. Verify dataset checksum.
-2. Set seed cố định (42).
-3. Run mỗi baseline + CobA configurations.
-4. Sinh `report.md` với P/R/F1/CI + matplotlib plots.
+`coba eval` chạy:
+1. Đọc YAML config từ `benchmarks/configs/*.yaml`.
+2. Load dataset từ `benchmarks/datasets/<name>/labels.jsonl` (skeleton ở M2 PR; M4 sẽ wire predictor thật vào `Orchestrator`).
+3. Tính TP/FP/FN/TN qua `coba.eval.matching` (tolerance ±5 dòng + CWE match top-level).
+4. Sinh `eval_report.{json,md,html,csv}` qua `coba.eval.report`.
 
-Mọi config eval lưu trong `benchmarks/configs/*.yaml`.
+Mọi config eval lưu trong `benchmarks/configs/*.yaml`. Mặc định seed = 42.
 
 ## 7. Statistical test
 

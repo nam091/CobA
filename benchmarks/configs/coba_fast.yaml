@@ -1,0 +1,7 @@
+name: coba-fast
+dataset: primevul
+subset: 100
+detector_profile: fast
+seed: 42
+line_tolerance: 5
+require_cwe_match: true

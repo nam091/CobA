@@ -133,14 +133,40 @@ def models_cmd() -> None:
 
 @app.command("eval")
 def eval_cmd(
-    dataset: Annotated[str, typer.Option(help="primevul | owasp | juliet")] = "primevul",
-    subset: Annotated[int, typer.Option(help="N examples")] = 100,
-    output: Annotated[Path, typer.Option("--output", "-o")] = Path("benchmarks/results"),
+    config: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Config name(s) from benchmarks/configs/ (without .yaml). Default: all.",
+        ),
+    ] = None,
+    config_dir: Annotated[Path, typer.Option(help="Directory containing YAML configs")] = Path(
+        "benchmarks/configs"
+    ),
+    dataset_root: Annotated[
+        Path, typer.Option(help="Directory containing the benchmark datasets")
+    ] = Path("benchmarks/datasets"),
+    output: Annotated[Path, typer.Option("--output", "-o", help="Output dir for reports")] = Path(
+        "benchmarks/results"
+    ),
 ) -> None:
-    """Run evaluation (stub for v0)."""
-    output.mkdir(parents=True, exist_ok=True)
-    console.print(f"[yellow]eval stub:[/yellow] dataset={dataset} subset={subset} → {output}")
-    console.print("Run `make download-datasets` first, then implement in M4.")
+    """Run evaluation on benchmark datasets.
+
+    Each YAML config in ``benchmarks/configs/`` describes one run. The
+    command loads datasets from ``benchmarks/datasets/`` (populated via
+    ``bash scripts/download_datasets.sh``) and writes
+    ``eval_report.{json,md,html,csv}`` into ``--output``.
+    """
+    from coba.eval.cli import run_cli
+
+    n = run_cli(
+        configs=config,
+        config_dir=config_dir,
+        dataset_root=dataset_root,
+        output_dir=output,
+    )
+    console.print(f"[green]eval done[/green]: {n} run(s) → {output}")
 
 
 def _print_report(report) -> None:
