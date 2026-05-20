@@ -166,6 +166,25 @@ rate_limit:
 - Tính `cost = (in_tokens × in_price + out_tokens × out_price) / 1M`.
 - Trả về `ScanReport.cost_breakdown` cuối mỗi scan.
 
+## 4.3. Few-shot retrieval cho Detector
+
+Mỗi chunk được Detector audit kèm 0–`fewshot_k` ví dụ `(vuln, safe)` ngắn lấy từ `src/coba/data/fewshot_examples.json`. Class `coba.agent.rag.FewShotIndex` chịu trách nhiệm:
+
+- **Lookup theo CWE**: trả về toàn bộ entry có cùng `cwe` id.
+- **Ưu tiên ngôn ngữ**: khi `chunk.language=python`, các ví dụ Python xếp trước; fallback sang ngôn ngữ khác nếu CWE đó chưa có ví dụ Python.
+- **Round-robin theo CWE**: nếu chunk có nhiều CWE candidate (nhiều static hints), Detector lấy 1 ví dụ/CWE trước khi top up — tránh tình huống 2 ví dụ về SQLi át toàn bộ context khi chunk còn có CSRF.
+- **Determinism**: thứ tự ví dụ bám theo thứ tự xuất hiện trong file JSON. Không random, không re-rank.
+
+Prompt template (`detector.j2`) chèn block `EXAMPLES — vulnerable vs safe patterns` giữa CWE-knowledge và static-hints. Mỗi ví dụ gồm `VULN:`, `SAFE:`, và 1 dòng `WHY:` ≤ 40 từ.
+
+Lý do thiết kế:
+
+| Trade-off | Lựa chọn | Lý do |
+|---|---|---|
+| Built-in vs RAG-retrieval | Built-in JSON (deterministic) | Reproducibility — eval phải lặp lại được hệ số xác định. Khi corpus đủ lớn (≥ 200 entries) sẽ chuyển sang Chroma. |
+| Vuln-only vs vuln+safe | vuln + safe + explanation | "Học bằng đối chiếu" giúp LLM nhận diện pattern chính xác hơn, đồng thời gợi ý fix khi sinh `fix_suggestion`. |
+| Top-k cố định | `fewshot_k=2` mặc định | 2 ví dụ ≈ 200–400 tokens; cost insignificant so với chunk body 1–8K tokens, nhưng đủ để học ngữ cảnh. |
+
 ## 5. Prompt versioning
 
 Mọi prompt nằm trong `src/coba/prompts/*.j2`, có version header:

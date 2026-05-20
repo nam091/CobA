@@ -4,6 +4,22 @@ CONTEXT — CWE knowledge (use ONLY these CWE ids, do not invent):
 - {{cwe.cwe_id}}: {{cwe.title}}. {{cwe.text}}
 {% endfor %}
 
+{% if fewshot_examples %}
+EXAMPLES — vulnerable vs safe patterns to anchor your reasoning:
+{% for ex in fewshot_examples %}
+[{{ex.title}}]
+VULN:
+```{{ex.language}}
+{{ex.vuln}}
+```
+SAFE:
+```{{ex.language}}
+{{ex.safe}}
+```
+WHY: {{ex.explanation}}
+{% endfor %}
+{% endif %}
+
 CONTEXT — static-analyzer hints (may be wrong; treat as priors, not ground truth):
 {% if static_hints %}
 {% for h in static_hints %}

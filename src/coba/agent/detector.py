@@ -8,7 +8,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import ValidationError
 
-from coba.agent.rag import RagIndex, RagSnippet
+from coba.agent.rag import FewShotExample, FewShotIndex, RagIndex, RagSnippet
 from coba.llm.base import TaskKind
 from coba.llm.router import LLMRouter
 from coba.utils.logging import get_logger
@@ -23,9 +23,18 @@ PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 class Detector:
     """Run an LLM completion to extract RawFindings from a chunk."""
 
-    def __init__(self, router: LLMRouter, rag: RagIndex | None = None) -> None:
+    def __init__(
+        self,
+        router: LLMRouter,
+        rag: RagIndex | None = None,
+        fewshot: FewShotIndex | None = None,
+        *,
+        fewshot_k: int = 2,
+    ) -> None:
         self.router = router
         self.rag = rag or RagIndex()
+        self.fewshot = fewshot or FewShotIndex()
+        self.fewshot_k = fewshot_k
         self._env = Environment(
             loader=FileSystemLoader(str(PROMPTS_DIR)),
             autoescape=select_autoescape(disabled_extensions=("j2",)),
@@ -33,7 +42,11 @@ class Detector:
         )
 
     def _render_prompt(
-        self, chunk: Chunk, hints: list[StaticHint], cwe_ctx: list[RagSnippet]
+        self,
+        chunk: Chunk,
+        hints: list[StaticHint],
+        cwe_ctx: list[RagSnippet],
+        examples: list[FewShotExample],
     ) -> str:
         template = self._env.get_template("detector.j2")
         return template.render(
@@ -41,7 +54,46 @@ class Detector:
             body=sanitize_code_for_prompt(chunk.body),
             static_hints=hints,
             cwe_context=cwe_ctx,
+            fewshot_examples=examples,
         )
+
+    def _collect_fewshot(
+        self,
+        chunk: Chunk,
+        cwe_keys: list[str],
+    ) -> list[FewShotExample]:
+        """Return up to ``fewshot_k`` examples spanning the suspected CWEs.
+
+        We round-robin across CWE ids so a chunk hinted at by multiple
+        rules still sees at least one example per CWE (until budget).
+        """
+        if self.fewshot_k <= 0 or not cwe_keys:
+            return []
+        # De-dupe while preserving order.
+        seen: set[str] = set()
+        unique_cwes: list[str] = []
+        for c in cwe_keys:
+            if c not in seen:
+                seen.add(c)
+                unique_cwes.append(c)
+        # Pull 1 per CWE first; top up if we still have budget.
+        out: list[FewShotExample] = []
+        per_cwe = 1
+        while len(out) < self.fewshot_k and per_cwe <= self.fewshot_k:
+            for cwe in unique_cwes:
+                if len(out) >= self.fewshot_k:
+                    break
+                exs = self.fewshot.examples_for(cwe, language=chunk.language.value, top_k=per_cwe)
+                for e in exs:
+                    if e not in out and len(out) < self.fewshot_k:
+                        out.append(e)
+            per_cwe += 1
+            if not any(
+                self.fewshot.examples_for(c, language=chunk.language.value, top_k=per_cwe)
+                for c in unique_cwes
+            ):
+                break
+        return out
 
     async def detect(self, chunk: Chunk, hints: list[StaticHint] | None = None) -> list[RawFinding]:
         hints = hints or []
@@ -51,7 +103,10 @@ class Detector:
         cwe_ctx = [self.rag.by_cwe(k) for k in cwe_keys if self.rag.by_cwe(k)] or self.rag.query(
             hints=[h.message for h in hints], top_k=3
         )
-        prompt = self._render_prompt(chunk, hints, [c for c in cwe_ctx if c])
+        # Few-shot examples: prefer CWEs flagged by static tools, else top-N from CWE ctx.
+        candidate_cwes = cwe_keys or [c.cwe_id for c in cwe_ctx if c]
+        examples = self._collect_fewshot(chunk, candidate_cwes)
+        prompt = self._render_prompt(chunk, hints, [c for c in cwe_ctx if c], examples)
 
         try:
             resp = await self.router.complete(

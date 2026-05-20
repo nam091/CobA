@@ -1,0 +1,155 @@
+{
+  "_meta": {
+    "version": "2025-05",
+    "source": "Hand-curated minimal vuln/safe pairs distilled from MITRE CWE demonstrative examples and OWASP cheat sheets.",
+    "schema": {
+      "cwe": "CWE-<id>",
+      "language": "python | java | c | cpp | javascript | typescript",
+      "vuln": "minimal vulnerable code snippet (≤12 lines)",
+      "safe": "minimal safe rewrite (≤12 lines)",
+      "explanation": "≤40 word, why vuln is dangerous + why the safe rewrite works"
+    }
+  },
+  "examples": [
+    {
+      "cwe": "CWE-89",
+      "language": "python",
+      "vuln": "def get_user(uid):\n    q = \"SELECT * FROM users WHERE id = '\" + uid + \"'\"\n    return db.execute(q).fetchone()",
+      "safe": "def get_user(uid):\n    q = \"SELECT * FROM users WHERE id = ?\"\n    return db.execute(q, (uid,)).fetchone()",
+      "explanation": "String concatenation lets `uid` carry SQL fragments. Parameterised queries bind values via the driver, so input never becomes code."
+    },
+    {
+      "cwe": "CWE-89",
+      "language": "java",
+      "vuln": "String q = \"SELECT * FROM u WHERE id='\" + req.getParameter(\"id\") + \"'\";\nstmt.executeQuery(q);",
+      "safe": "PreparedStatement ps = conn.prepareStatement(\"SELECT * FROM u WHERE id=?\");\nps.setString(1, req.getParameter(\"id\"));\nps.executeQuery();",
+      "explanation": "Statement#executeQuery treats the whole string as SQL. PreparedStatement binds parameters, so user input cannot alter query structure."
+    },
+    {
+      "cwe": "CWE-78",
+      "language": "python",
+      "vuln": "import os\nos.system(\"ping -c 1 \" + host)",
+      "safe": "import subprocess\nsubprocess.run([\"ping\", \"-c\", \"1\", host], check=True)",
+      "explanation": "`os.system` invokes a shell; `;`, `&&`, or `$()` in `host` lets the attacker execute extra commands. Argv list bypasses the shell entirely."
+    },
+    {
+      "cwe": "CWE-78",
+      "language": "javascript",
+      "vuln": "const { exec } = require('child_process');\nexec('ls ' + req.query.dir, cb);",
+      "safe": "const { execFile } = require('child_process');\nexecFile('ls', [req.query.dir], cb);",
+      "explanation": "`exec` spawns through `/bin/sh -c`; metacharacters in `dir` run commands. `execFile` skips the shell and treats argv literally."
+    },
+    {
+      "cwe": "CWE-79",
+      "language": "javascript",
+      "vuln": "app.get('/hi', (req, res) => {\n  res.send('<h1>Hello ' + req.query.name + '</h1>');\n});",
+      "safe": "import escape from 'escape-html';\napp.get('/hi', (req, res) => {\n  res.send('<h1>Hello ' + escape(req.query.name) + '</h1>');\n});",
+      "explanation": "Direct concatenation lets `name` carry `<script>` tags. HTML escaping converts angle-brackets so the browser does not parse user input as markup."
+    },
+    {
+      "cwe": "CWE-22",
+      "language": "python",
+      "vuln": "def serve(name):\n    return open(\"/var/files/\" + name).read()",
+      "safe": "from pathlib import Path\nROOT = Path(\"/var/files\").resolve()\ndef serve(name):\n    p = (ROOT / name).resolve()\n    if not p.is_relative_to(ROOT):\n        raise PermissionError\n    return p.read_text()",
+      "explanation": "`../../etc/passwd` escapes the base directory. Resolving both root and final path then checking containment blocks traversal."
+    },
+    {
+      "cwe": "CWE-94",
+      "language": "python",
+      "vuln": "def calc(expr):\n    return eval(expr)",
+      "safe": "import ast, operator\nOPS = {ast.Add: operator.add, ast.Sub: operator.sub}\ndef calc(expr):\n    tree = ast.parse(expr, mode='eval')\n    # walk tree, only allow Num/BinOp...",
+      "explanation": "`eval` runs arbitrary Python on caller-supplied text. Whitelisting AST nodes through `ast.parse` restricts execution to a tiny safe subset."
+    },
+    {
+      "cwe": "CWE-502",
+      "language": "python",
+      "vuln": "import pickle\nuser = pickle.loads(request.body)",
+      "safe": "import json\nuser = json.loads(request.body.decode())",
+      "explanation": "`pickle.loads` instantiates arbitrary classes (RCE). JSON only produces dict/list/primitives — safe to load from untrusted bytes."
+    },
+    {
+      "cwe": "CWE-327",
+      "language": "python",
+      "vuln": "import hashlib\nhashlib.md5(password.encode()).hexdigest()",
+      "safe": "import hashlib, os\nsalt = os.urandom(16)\nhashlib.scrypt(password.encode(), salt=salt, n=2**15, r=8, p=1)",
+      "explanation": "MD5 is fast and broken — crackable in seconds. `scrypt` is memory-hard and salted, so brute-force becomes infeasible per-password."
+    },
+    {
+      "cwe": "CWE-330",
+      "language": "python",
+      "vuln": "import random\ntoken = ''.join(random.choices('abcdef0123456789', k=32))",
+      "safe": "import secrets\ntoken = secrets.token_hex(16)",
+      "explanation": "`random` uses a predictable Mersenne Twister, recoverable from ~624 outputs. `secrets` reads OS CSPRNG, suitable for tokens and session ids."
+    },
+    {
+      "cwe": "CWE-787",
+      "language": "c",
+      "vuln": "char dst[16];\nstrcpy(dst, src);",
+      "safe": "char dst[16];\nstrncpy(dst, src, sizeof(dst) - 1);\ndst[sizeof(dst) - 1] = '\\0';",
+      "explanation": "`strcpy` writes until '\\0' — `src` longer than 16 overflows `dst`. `strncpy` bounds the copy; explicit terminator guards a missing '\\0'."
+    },
+    {
+      "cwe": "CWE-798",
+      "language": "python",
+      "vuln": "API_KEY = \"sk-live-7c93a1e0deadbeef\"\nresp = requests.get(url, headers={\"x-api-key\": API_KEY})",
+      "safe": "import os\nresp = requests.get(url, headers={\"x-api-key\": os.environ[\"API_KEY\"]})",
+      "explanation": "A literal key is leaked when source is published; rotating it requires a code change. Loading from env keeps secrets out of VCS and rotatable."
+    },
+    {
+      "cwe": "CWE-611",
+      "language": "python",
+      "vuln": "from xml.etree import ElementTree as ET\ntree = ET.fromstring(xml_bytes)",
+      "safe": "from defusedxml import ElementTree as ET\ntree = ET.fromstring(xml_bytes)",
+      "explanation": "Default ElementTree resolves external DTD entities — attacker can read /etc/passwd. `defusedxml` disables entity expansion by default."
+    },
+    {
+      "cwe": "CWE-918",
+      "language": "python",
+      "vuln": "import requests\nresp = requests.get(request.args['url'])",
+      "safe": "from urllib.parse import urlparse\nALLOWED = {'api.example.com'}\nu = urlparse(request.args['url'])\nif u.hostname not in ALLOWED:\n    abort(400)\nresp = requests.get(u.geturl())",
+      "explanation": "Unfiltered URL lets attacker hit metadata server (169.254.169.254) or internal services. Host allow-list confines fetches to known origins."
+    },
+    {
+      "cwe": "CWE-352",
+      "language": "javascript",
+      "vuln": "app.post('/transfer', (req, res) => {\n  bank.transfer(req.user.id, req.body.to, req.body.amount);\n});",
+      "safe": "app.use(csrf());\napp.post('/transfer', (req, res) => {\n  bank.transfer(req.user.id, req.body.to, req.body.amount);\n});",
+      "explanation": "Without a CSRF token, a hostile site can submit the form on behalf of the user. CSRF middleware rejects requests lacking the per-session token."
+    },
+    {
+      "cwe": "CWE-862",
+      "language": "javascript",
+      "vuln": "app.get('/admin/users', (req, res) => {\n  res.json(db.allUsers());\n});",
+      "safe": "app.get('/admin/users', requireRole('admin'), (req, res) => {\n  res.json(db.allUsers());\n});",
+      "explanation": "Without an authorization check, any logged-in user (or anonymous, if no auth middleware) reaches admin data. The middleware enforces deny-by-default."
+    },
+    {
+      "cwe": "CWE-287",
+      "language": "python",
+      "vuln": "def login(u, p):\n    if u == 'admin' and p == STORED_PASSWORD:\n        ...",
+      "safe": "import hmac\ndef login(u, p):\n    if u == 'admin' and hmac.compare_digest(p, STORED_PASSWORD):\n        ...",
+      "explanation": "`==` short-circuits on mismatched bytes, leaking length and prefix via timing. `hmac.compare_digest` runs in constant time, hiding partial matches."
+    },
+    {
+      "cwe": "CWE-434",
+      "language": "python",
+      "vuln": "f = request.files['avatar']\nf.save('/var/www/uploads/' + f.filename)",
+      "safe": "import uuid, os\nALLOWED = {'.png', '.jpg'}\nf = request.files['avatar']\next = os.path.splitext(f.filename)[1].lower()\nif ext not in ALLOWED:\n    abort(400)\nf.save(os.path.join('/var/www/uploads', uuid.uuid4().hex + ext))",
+      "explanation": "An attacker uploads `shell.php` and gets RCE if the dir is served. Extension allow-list + random filename + non-web-root storage cuts the attack."
+    },
+    {
+      "cwe": "CWE-476",
+      "language": "c",
+      "vuln": "char *p = getenv(\"HOME\");\nprintf(\"%s\\n\", p);",
+      "safe": "char *p = getenv(\"HOME\");\nif (p == NULL) return 1;\nprintf(\"%s\\n\", p);",
+      "explanation": "`getenv` returns NULL when unset; `printf(\"%s\", NULL)` is undefined behaviour and typically crashes. The null guard restores safety."
+    },
+    {
+      "cwe": "CWE-416",
+      "language": "c",
+      "vuln": "char *p = malloc(10);\nfree(p);\nstrcpy(p, \"hi\");",
+      "safe": "char *p = malloc(10);\nstrcpy(p, \"hi\");\nfree(p);\np = NULL;",
+      "explanation": "Writing to freed memory corrupts heap metadata (UAF → RCE). Performing writes before `free` and nulling the pointer afterwards eliminates the dangling reference."
+    }
+  ]
+}
