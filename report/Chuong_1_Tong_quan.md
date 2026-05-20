@@ -159,18 +159,23 @@ Ràng buộc:
 
 ## 1.8. Cấu trúc khoá luận
 
-- **Chương 1 — Tổng quan**: Bối cảnh, bài toán, mục tiêu, đóng góp.
-- **Chương 2 — Cơ sở lý thuyết**: LLM, RAG, AST/CPG, CWE, prompt
-  engineering.
-- **Chương 3 — Khảo sát công trình liên quan**: GPTScan, Vul-RAG, LATTE,
-  IRIS, … (12+ công trình).
-- **Chương 4 — Thiết kế hệ thống**: Kiến trúc CobA — 5 view C4 + ADR.
-- **Chương 5 — Triển khai**: LLM router, tool wrappers, agent loop, RAG,
-  CLI/API.
-- **Chương 6 — Đánh giá thực nghiệm**: 6 thí nghiệm (E1–E6) + thảo luận.
-- **Chương 7 — Kết luận & hướng phát triển**: Tổng kết, hạn chế,
-  future work.
-- **Phụ lục**: Cấu hình chi tiết, bảng kết quả đầy đủ, ethics statement.
+Khoá luận được tổ chức theo **ba chương chính** kèm phụ lục:
+
+- **Chương 1 — Tổng quan đề tài**: Bối cảnh, phát biểu bài toán, mục tiêu
+  (O1–O6), câu hỏi nghiên cứu (RQ1–RQ6), phạm vi và đóng góp.
+- **Chương 2 — Thiết kế và triển khai hệ thống**: Gộp toàn bộ nội dung
+  thiết kế kiến trúc (5 view C4, 10 ADR, threat model, anti-hallucination)
+  và triển khai mã nguồn (Python 3.11+, FastAPI, Typer, LLM Router, SAST
+  wrappers, Chunker, Detector, Verifier, RAG, call graph, Planner upgrade
+  M3c, CLI/API, Docker, CI/CD).
+- **Chương 3 — Đánh giá thực nghiệm và Kết luận**: Khung đánh giá (E1–E6),
+  dataset, metric, kết quả + thảo luận, đối chiếu mục tiêu O1–O6,
+  hạn chế, hướng phát triển và bài học rút ra.
+- **Phụ lục**: *Cơ sở lý thuyết* (Phụ lục A — LLM, RAG, AST/CPG, CWE,
+  prompt engineering), *Khảo sát công trình liên quan* (Phụ lục B —
+  GPTScan, Vul-RAG, LATTE, IRIS, …), cùng các phụ lục thực nghiệm:
+  cấu hình chi tiết, bảng kết quả đầy đủ, ethics statement, hướng dẫn
+  tái lập, FAQ, glossary.
 
 ## 1.9. Tuyên bố về sử dụng có đạo đức
 
@@ -182,12 +187,12 @@ Người dùng cũng có trách nhiệm chỉ quét những mã nguồn mình đ
 
 Mọi nội dung trong khoá luận này, bao gồm các bảng kết quả, được tạo ra với
 nguyên tắc trung thực — bao gồm cả các trường hợp CobA dự đoán sai (báo cáo
-trong Chương 6 § 6.8 *Failure Analysis*).
+trong Chương 3 § 3.6 *Failure Analysis*).
 
 ---
 
 > **TODO** trước khi nộp:
 > - Cập nhật con số CVE NVD 2024 chính xác.
 > - Thêm hình *thống kê CVE theo năm* (matplotlib từ NVD).
-> - Bổ sung 1 hình *kiến trúc tổng quan CobA* (1 trang).
-> - Rà soát citation BibTeX key.
+> - Bổ sung 1 hình *kiến trúc tổng quan CobA* (1 trang) — đặt sát § 1.7.
+> - Rà soát citation BibTeX key trong `docs/references.bib`.
