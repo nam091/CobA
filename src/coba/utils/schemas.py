@@ -183,6 +183,8 @@ class ScanStats(BaseModel):
     n_final_findings: int = 0
     n_verifier_rejected: int = 0
     n_schema_rejected: int = 0
+    n_chunks_budget_skipped: int = 0
+    n_chunks_cache_hit: int = 0
     total_cost_usd: float = 0.0
     timings: dict[str, float] = Field(default_factory=dict)
 

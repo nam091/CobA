@@ -12,6 +12,7 @@ from coba.agent.callgraph import EMPTY_CALL_GRAPH, CallGraph
 from coba.agent.detector import Detector
 from coba.agent.planner import Planner
 from coba.agent.rag import RagIndex, load_rag_index
+from coba.agent.skip_cache import SkipCache, SkipCacheRecord, hash_file
 from coba.agent.verifier import Verifier
 from coba.config.settings import get_settings
 from coba.llm.router import LLMRouter
@@ -55,6 +56,10 @@ class Orchestrator:
             # Joern is heavy; include only when available.
             JoernRunner(),
         ]
+        self.skip_cache = SkipCache(
+            self.settings.cache_dir,
+            enabled=self.settings.coba_skip_cache_enabled,
+        )
 
     # ---------------------------------------------------------------- public
     async def scan(self, request: ScanRequest) -> ScanReport:
@@ -86,10 +91,20 @@ class Orchestrator:
         stats.n_static_findings = sum(len(v) for v in static_hints_by_file.values())
         timings["static"] = time.perf_counter() - t0
 
-        # 3) LLM Detector (parallel) --------------------------------------
+        # 2.5) Skip-cache: short-circuit files whose content has not changed.
         t0 = time.perf_counter()
-        raw_pairs = await self._run_detector(chunks, static_hints_by_file)
+        cached_findings, chunks_to_scan, file_hashes = self._apply_skip_cache(files, chunks)
+        stats.n_chunks_cache_hit = len(chunks) - len(chunks_to_scan)
+        timings["skip_cache"] = time.perf_counter() - t0
+
+        # 2.6) Priority queue — hot chunks (with static hints) first.
+        chunks_to_scan = Planner.prioritize(chunks_to_scan, static_hints_by_file)
+
+        # 3) LLM Detector (parallel, budget-capped) ------------------------
+        t0 = time.perf_counter()
+        raw_pairs, n_budget_skipped = await self._run_detector(chunks_to_scan, static_hints_by_file)
         stats.n_raw_findings = sum(len(rs) for _, rs in raw_pairs)
+        stats.n_chunks_budget_skipped = n_budget_skipped
         timings["detector"] = time.perf_counter() - t0
 
         # 4) Filter (schema/grounding) + Verifier -------------------------
@@ -105,8 +120,13 @@ class Orchestrator:
                     stats.n_verifier_rejected += 1
                     continue
                 findings.append(_to_final(chunk, raw, v.verdict, v.rationale, v.confidence))
+        # Merge cached findings back in for the final report.
+        findings.extend(cached_findings)
         stats.n_final_findings = len(findings)
         timings["verifier"] = time.perf_counter() - t0
+
+        # 4.5) Persist freshly scanned files into the skip cache.
+        self._persist_skip_cache(findings, chunks_to_scan, file_hashes, cached_findings)
 
         # 5) Cost + finalize ----------------------------------------------
         stats.total_cost_usd = self.router.cost.spent
@@ -180,8 +200,19 @@ class Orchestrator:
 
     async def _run_detector(
         self, chunks: list[Chunk], hints_by_file: dict[str, list[StaticHint]]
-    ) -> list[tuple[Chunk, list[RawFinding]]]:
+    ) -> tuple[list[tuple[Chunk, list[RawFinding]]], int]:
+        """Run the Detector over ``chunks`` honouring the per-scan budget cap.
+
+        Returns the per-chunk raw findings plus the number of chunks that
+        were skipped because the budget was exhausted. The budget is
+        polled before kicking off each LLM call so we never *start* a
+        request we cannot afford.
+        """
         sem = asyncio.Semaphore(self.settings.coba_parallel_llm_calls)
+        budget = self.settings.coba_scan_budget_usd
+        budget_exhausted = False
+        skipped = 0
+        results: list[tuple[Chunk, list[RawFinding]]] = []
 
         async def one(chunk: Chunk) -> tuple[Chunk, list[RawFinding]]:
             relevant = self._hints_for_chunk(chunk, hints_by_file)
@@ -189,7 +220,88 @@ class Orchestrator:
                 raws = await self.detector.detect(chunk, relevant)
             return chunk, raws
 
-        return await asyncio.gather(*(one(c) for c in chunks))
+        for chunk in chunks:
+            if budget > 0 and self.router.cost.spent >= budget:
+                if not budget_exhausted:
+                    log.warning(
+                        "orchestrator.budget_exhausted",
+                        spent_usd=round(self.router.cost.spent, 4),
+                        budget_usd=budget,
+                    )
+                    budget_exhausted = True
+                skipped += 1
+                continue
+            results.append(await one(chunk))
+        return results, skipped
+
+    def _apply_skip_cache(
+        self,
+        files: list[Path],
+        chunks: list[Chunk],
+    ) -> tuple[list[Finding], list[Chunk], dict[str, str]]:
+        """Partition chunks into "cached" (skip) vs "to scan".
+
+        Returns ``(cached_findings, chunks_to_scan, file_hashes)``:
+        - ``cached_findings``: findings reused from previous scans.
+        - ``chunks_to_scan``: chunks whose owning file is *not* in the
+          cache; these will go through Detector + Verifier.
+        - ``file_hashes``: map from canonical file path -> sha256, so the
+          caller can persist new results after the scan.
+        """
+        cached_findings: list[Finding] = []
+        chunks_to_scan: list[Chunk] = []
+        file_hashes: dict[str, str] = {}
+        cached_files: set[str] = set()
+
+        for f in files:
+            sha = hash_file(f)
+            key = _normalize_file_key(str(f))
+            if sha is None:
+                continue
+            file_hashes[key] = sha
+            rec = self.skip_cache.get(sha)
+            if rec is None:
+                continue
+            cached_findings.extend(rec.to_findings())
+            cached_files.add(key)
+
+        for ch in chunks:
+            if _normalize_file_key(ch.file) in cached_files:
+                continue
+            chunks_to_scan.append(ch)
+        return cached_findings, chunks_to_scan, file_hashes
+
+    def _persist_skip_cache(
+        self,
+        all_findings: list[Finding],
+        chunks_scanned: list[Chunk],
+        file_hashes: dict[str, str],
+        cached_findings: list[Finding],
+    ) -> None:
+        """Write per-file findings for every freshly scanned file into the cache.
+
+        Cache hits are written through unchanged so the entry stays alive
+        for files where Detector returned zero findings (clean files
+        must still be cacheable — otherwise they re-scan every time).
+        """
+        if not self.skip_cache.enabled:
+            return
+        scanned_files = {_normalize_file_key(c.file) for c in chunks_scanned}
+        # Index findings (excluding the ones we just restored from cache)
+        # by canonical file path so we only re-write fresh content.
+        cached_id = {(f.file, f.line_start, f.cwe) for f in cached_findings}
+        per_file: dict[str, list[Finding]] = {k: [] for k in scanned_files}
+        for f in all_findings:
+            if (f.file, f.line_start, f.cwe) in cached_id:
+                continue
+            key = _normalize_file_key(f.file)
+            if key in per_file:
+                per_file[key].append(f)
+        for key, findings in per_file.items():
+            sha = file_hashes.get(key)
+            if not sha:
+                continue
+            self.skip_cache.put(SkipCacheRecord.from_findings(sha, key, findings))
 
     @staticmethod
     def _hints_for_chunk(

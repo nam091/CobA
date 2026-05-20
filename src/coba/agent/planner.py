@@ -10,6 +10,18 @@ from coba.config.settings import get_settings
 from coba.utils.logging import get_logger
 from coba.utils.schemas import Chunk, Language, StaticHint
 
+
+def _file_key(path: str) -> str:
+    """Canonical absolute-path key used by ``prioritize``.
+
+    Mirrors ``Orchestrator._normalize_file_key`` so the two stay in sync.
+    """
+    try:
+        return str(Path(path).resolve())
+    except OSError:
+        return path
+
+
 log = get_logger("coba.agent.planner")
 
 # Common ignore patterns.
@@ -97,16 +109,31 @@ class Planner:
         return all_chunks
 
     @staticmethod
-    def prioritize(chunks: list[Chunk], hints: list[StaticHint]) -> list[Chunk]:
-        """Bring chunks containing static-tool hits to the front of the queue."""
-        hot_files: dict[str, list[StaticHint]] = {}
-        for h in hints:
-            # StaticHint doesn't carry file path natively — we attach below in loop.
-            # When planner is called via Orchestrator, hints are already filtered
-            # by file. For now we just preserve order.
-            _ = h
-            _ = hot_files
-        return chunks
+    def prioritize(chunks: list[Chunk], hints_by_file: dict[str, list[StaticHint]]) -> list[Chunk]:
+        """Return ``chunks`` ordered so that those overlapping static-tool hints
+        come first; ties broken by hint count (descending), then by file then
+        line for determinism.
+
+        ``hints_by_file`` is the canonicalised map produced by
+        ``Orchestrator._group_hints_by_file``. Keys are absolute paths (plus
+        the ``"_global"`` bucket for hints without a file). We score each
+        chunk by the number of *matching* hints — those whose line range is
+        inside ``[chunk.line_start, chunk.line_end]``.
+        """
+        if not hints_by_file:
+            return list(chunks)
+
+        def score(chunk: Chunk) -> int:
+            # Try exact match first, then ``_global`` bucket as fallback.
+            key = _file_key(chunk.file)
+            candidates = hints_by_file.get(key, []) + hints_by_file.get("_global", [])
+            return sum(1 for h in candidates if chunk.line_start <= h.line <= chunk.line_end)
+
+        # Stable sort: chunks with more hints first, then alpha by file/line.
+        return sorted(
+            chunks,
+            key=lambda c: (-score(c), c.file, c.line_start),
+        )
 
     def plan(
         self, target: Path, *, call_graph: CallGraph | None = None
