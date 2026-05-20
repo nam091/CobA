@@ -38,6 +38,8 @@ class Settings(BaseSettings):
         default="qwen2.5-coder:7b", alias="COBA_LLM_OFFLINE_FALLBACK"
     )
     coba_llm_daily_budget_usd: float = Field(default=5.0, alias="COBA_LLM_DAILY_BUDGET_USD")
+    coba_scan_budget_usd: float = Field(default=2.0, alias="COBA_SCAN_BUDGET_USD")
+    """Per-scan hard cap on LLM spend (USD). 0 disables the check."""
 
     # --- Tool binaries -------------------------------------------------------
     semgrep_bin: str = "semgrep"
@@ -59,6 +61,7 @@ class Settings(BaseSettings):
     coba_max_file_size_kb: int = 512
     coba_max_chunk_tokens: int = 2000
     coba_parallel_llm_calls: int = 4
+    coba_skip_cache_enabled: bool = Field(default=True, alias="COBA_SKIP_CACHE_ENABLED")
 
     # --- Profile -------------------------------------------------------------
     coba_profile: str = "fast"  # "fast" or "accuracy"

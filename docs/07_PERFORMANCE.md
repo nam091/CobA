@@ -54,6 +54,12 @@ findings = await asyncio.gather(*[detect(c) for c in chunks])
 
 ### 3.3. Smart filtering (giảm số call)
 
+**[O7.1] Skip-cache theo SHA-256 nội dung file** (M3c, đã ship) — `coba.agent.skip_cache.SkipCache` lưu `(sha256 → list[Finding])` dưới `.coba_cache/skip/<aa>/<sha>.json`. Khi rerun cùng repo, file không đổi → tái dùng findings, bỏ cả Detector + Verifier; clean file vẫn cache (empty record) để không re-scan. Trên CI khi PR chỉ sửa 2–3 file, cache hit ≈ 95 %, tiết kiệm ≈ 90 % cost.
+
+**[O7.2] Priority queue theo SAST hits** (M3c, đã ship) — `Planner.prioritize(chunks, hints_by_file)` sort chunks theo số hits Semgrep/Bandit/Gitleaks/Joern rơi vào line range. Khi gặp budget cap, ta đã quét xong những chunks "nóng" trước → recall ổn định.
+
+**[O7.3] Per-scan budget cap** (M3c, đã ship) — `COBA_SCAN_BUDGET_USD` (default $2) khoá hard cap. Khi `router.cost.spent ≥ budget`, Orchestrator dừng nhận chunk mới, log `n_chunks_budget_skipped` vào `ScanStats`. Bảo vệ chi phí khi quét repo cực lớn / loop bug.
+
 **[O8] Skip non-vulnerable file types** — pre-filter `.md`, `.json`, `.yaml`, `.lock`, … không quét.
 
 **[O9] Verifier chỉ chạy trên Top-K finding** — sort theo `(confidence × severity_weight)` desc, verify K=20 đầu (≈ 20 % findings).
