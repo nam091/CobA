@@ -66,8 +66,14 @@ class LLMRouter:
         self.policy = RoutePolicy.from_settings(self.settings)
         self.cost = CostTracker(daily_budget_usd=self.settings.coba_llm_daily_budget_usd)
         self._providers: list[LLMProvider] = [
-            OpenAIProvider(self.settings.openai_api_key),
-            AnthropicProvider(self.settings.anthropic_api_key),
+            OpenAIProvider(
+                self.settings.openai_api_key,
+                base_url=self.settings.openai_base_url,
+            ),
+            AnthropicProvider(
+                self.settings.anthropic_api_key,
+                base_url=self.settings.anthropic_base_url,
+            ),
             GeminiProvider(self.settings.google_api_key),
             OllamaProvider(self.settings.ollama_base_url),
         ]

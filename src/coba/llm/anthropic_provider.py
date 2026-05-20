@@ -1,8 +1,17 @@
-"""Anthropic provider — Claude 3.5 family."""
+"""Anthropic provider — Claude 3.5 family + any Anthropic-compatible endpoint.
+
+When :class:`Settings.anthropic_base_url` is set, requests go to that URL via
+``AsyncAnthropic(base_url=...)``. This covers AWS Bedrock proxies, vendor
+gateways, and self-hosted Anthropic-compatible relays. ``supports()``
+stays strict (only ``claude-*``) because non-Claude models on an
+Anthropic-compatible endpoint are rare and ambiguous — prefer the OpenAI
+provider with a custom base URL for those.
+"""
 
 from __future__ import annotations
 
 import time
+from typing import Any
 
 from coba.llm.base import LLMProvider, ProviderUnavailable
 from coba.llm.cost import price_for
@@ -15,9 +24,15 @@ log = get_logger("coba.llm.anthropic")
 class AnthropicProvider(LLMProvider):
     name = "anthropic"
 
-    def __init__(self, api_key: str | None) -> None:
+    def __init__(
+        self,
+        api_key: str | None,
+        *,
+        base_url: str | None = None,
+    ) -> None:
         self.api_key = api_key
-        self._client = None
+        self.base_url = base_url
+        self._client: Any = None
 
     def available(self) -> bool:
         return bool(self.api_key)
@@ -25,7 +40,7 @@ class AnthropicProvider(LLMProvider):
     def supports(self, model_id: str) -> bool:
         return model_id.startswith("claude-")
 
-    def _get_client(self):  # pragma: no cover
+    def _get_client(self) -> Any:  # pragma: no cover
         if self._client is None:
             if not self.api_key:
                 raise ProviderUnavailable("ANTHROPIC_API_KEY not set")
@@ -33,7 +48,10 @@ class AnthropicProvider(LLMProvider):
                 from anthropic import AsyncAnthropic
             except ImportError as exc:
                 raise ProviderUnavailable("anthropic package not installed") from exc
-            self._client = AsyncAnthropic(api_key=self.api_key)
+            kwargs: dict[str, Any] = {"api_key": self.api_key}
+            if self.base_url:
+                kwargs["base_url"] = self.base_url
+            self._client = AsyncAnthropic(**kwargs)
         return self._client
 
     async def complete(
