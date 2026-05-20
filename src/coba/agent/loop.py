@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 
 from coba.agent.detector import Detector
 from coba.agent.planner import Planner
-from coba.agent.rag import RagIndex
+from coba.agent.rag import RagIndex, load_rag_index
 from coba.agent.verifier import Verifier
 from coba.config.settings import get_settings
 from coba.llm.router import LLMRouter
@@ -43,7 +44,7 @@ class Orchestrator:
     ) -> None:
         self.settings = get_settings()
         self.router = router or LLMRouter(self.settings)
-        self.rag = rag or RagIndex()
+        self.rag = rag or load_rag_index()
         self.detector = Detector(self.router, self.rag)
         self.verifier = Verifier(self.router)
         self.tools: list[SASTTool] = tools or [
@@ -92,11 +93,11 @@ class Orchestrator:
                 if not self._grounding_filter(chunk, raw):
                     stats.n_schema_rejected += 1
                     continue
-                verdict, rationale = await self.verifier.verify(chunk, raw)
-                if verdict == Verdict.FALSE_POSITIVE:
+                v = await self.verifier.verify_detailed(chunk, raw)
+                if v.verdict == Verdict.FALSE_POSITIVE:
                     stats.n_verifier_rejected += 1
                     continue
-                findings.append(_to_final(chunk, raw, verdict, rationale))
+                findings.append(_to_final(chunk, raw, v.verdict, v.rationale, v.confidence))
         stats.n_final_findings = len(findings)
         timings["verifier"] = time.perf_counter() - t0
 
@@ -127,7 +128,8 @@ class Orchestrator:
         raise ValueError("ScanRequest must provide target_path or git_url")
 
     async def _run_static(self, target: Path) -> dict[str, list[StaticHint]]:
-        """Run each SAST tool and group hints by file."""
+        """Run each SAST tool and group hints by file (with a global bucket for hints
+        whose file path could not be resolved)."""
 
         async def run_one(tool: SASTTool) -> list[StaticHint]:
             try:
@@ -143,10 +145,7 @@ class Orchestrator:
 
         results = await asyncio.gather(*(run_one(t) for t in self.tools))
         flat: list[StaticHint] = [h for hs in results for h in hs]
-        # Group by file path (StaticHint doesn't carry file; tools encode in rule_id).
-        # For v0 we keep a single "global" bucket since hints' file path is implicit
-        # in the chunk. Future: extend StaticHint with a `file` field.
-        return {"_global": flat}
+        return _group_hints_by_file(flat, target)
 
     async def _run_detector(
         self, chunks: list[Chunk], hints_by_file: dict[str, list[StaticHint]]
@@ -165,12 +164,13 @@ class Orchestrator:
     def _hints_for_chunk(
         chunk: Chunk, hints_by_file: dict[str, list[StaticHint]]
     ) -> list[StaticHint]:
-        # v0: just filter by line range against the global bucket.
-        out: list[StaticHint] = []
-        for h in hints_by_file.get("_global", []):
-            if chunk.line_start <= h.line <= chunk.line_end:
-                out.append(h)
-        return out
+        """Return hints whose file matches ``chunk.file`` and whose line falls
+        inside the chunk's line range. Hints in the ``_global`` bucket are
+        line-range-matched only (tool reported no file)."""
+        chunk_key = _normalize_file_key(chunk.file)
+        candidates = list(hints_by_file.get(chunk_key, []))
+        candidates.extend(hints_by_file.get("_global", []))
+        return [h for h in candidates if chunk.line_start <= h.line <= chunk.line_end]
 
     @staticmethod
     def _grounding_filter(chunk: Chunk, raw: RawFinding) -> bool:
@@ -183,7 +183,54 @@ class Orchestrator:
         return True
 
 
-def _to_final(chunk: Chunk, raw: RawFinding, verdict: Verdict, rationale: str) -> Finding:
+def _normalize_file_key(path: str) -> str:
+    """Best-effort canonical key for grouping/looking-up hints by file path.
+
+    Tools report file paths in slightly different forms (absolute / relative
+    to scan target / with ``./`` prefix). We canonicalize to an absolute path
+    string when possible and fall back to the input.
+    """
+    try:
+        return str(Path(path).resolve())
+    except OSError:
+        return path
+
+
+def _group_hints_by_file(hints: list[StaticHint], target: Path) -> dict[str, list[StaticHint]]:
+    """Group static hints into buckets keyed by canonical file path.
+
+    Hints missing a ``file`` attribute land in a ``"_global"`` bucket so the
+    orchestrator can still match them by line range as a fallback. Relative
+    paths are resolved against ``target``.
+    """
+    grouped: dict[str, list[StaticHint]] = {"_global": []}
+    target_root = target if target.is_dir() else target.parent
+    for h in hints:
+        if not h.file:
+            grouped["_global"].append(h)
+            continue
+        p = Path(h.file)
+        if not p.is_absolute():
+            p = (target_root / p).resolve()
+        else:
+            with contextlib.suppress(OSError):
+                p = p.resolve()
+        grouped.setdefault(str(p), []).append(h)
+    return grouped
+
+
+def _to_final(
+    chunk: Chunk,
+    raw: RawFinding,
+    verdict: Verdict,
+    rationale: str,
+    verifier_confidence: float = 0.0,
+) -> Finding:
+    blended = (
+        max(0.0, min(1.0, raw.confidence * 0.4 + verifier_confidence * 0.6))
+        if verifier_confidence > 0
+        else raw.confidence
+    )
     return Finding(
         file=chunk.file,
         function=chunk.function,
@@ -193,7 +240,7 @@ def _to_final(chunk: Chunk, raw: RawFinding, verdict: Verdict, rationale: str) -
         severity=raw.severity
         if isinstance(raw.severity, Severity)
         else Severity.from_str(str(raw.severity)),
-        confidence=raw.confidence,
+        confidence=blended,
         title=raw.title,
         description=raw.description,
         data_flow=raw.data_flow,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -16,6 +17,15 @@ from coba.utils.schemas import Chunk, LLMMessage, RawFinding, Role, Verdict
 log = get_logger("coba.agent.verifier")
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+
+@dataclass(frozen=True)
+class VerifyResult:
+    """Structured verifier output."""
+
+    verdict: Verdict
+    rationale: str
+    confidence: float = 0.0
 
 
 class Verifier:
@@ -34,6 +44,16 @@ class Verifier:
         chunk: Chunk,
         finding: RawFinding,
     ) -> tuple[Verdict, str]:
+        """Backward-compatible 2-tuple API used by the Orchestrator."""
+        result = await self.verify_detailed(chunk, finding)
+        return result.verdict, result.rationale
+
+    async def verify_detailed(
+        self,
+        chunk: Chunk,
+        finding: RawFinding,
+    ) -> VerifyResult:
+        """Verifier pass returning verdict + rationale + confidence."""
         template = self._env.get_template("verifier.j2")
         prompt = template.render(
             chunk=chunk,
@@ -54,7 +74,7 @@ class Verifier:
             )
         except Exception as exc:  # pragma: no cover
             log.warning("verifier.llm_failed", error=str(exc))
-            return Verdict.UNVERIFIED, "verifier-llm-failed"
+            return VerifyResult(Verdict.UNVERIFIED, "verifier-llm-failed", 0.0)
 
         return _parse_verdict(resp.text)
 
@@ -69,7 +89,7 @@ _VERIFIER_SYSTEM = (
 )
 
 
-def _parse_verdict(text: str) -> tuple[Verdict, str]:
+def _parse_verdict(text: str) -> VerifyResult:
     text = text.strip()
     if text.startswith("```"):
         text = text.split("```", 2)[1]
@@ -79,11 +99,18 @@ def _parse_verdict(text: str) -> tuple[Verdict, str]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        return Verdict.UNVERIFIED, "verifier-bad-json"
-    verdict_raw = data.get("verdict", "FALSE_POSITIVE")
-    rationale = data.get("rationale", "")
+        return VerifyResult(Verdict.UNVERIFIED, "verifier-bad-json", 0.0)
+    if not isinstance(data, dict):
+        return VerifyResult(Verdict.UNVERIFIED, "verifier-not-object", 0.0)
+    verdict_raw = str(data.get("verdict", "FALSE_POSITIVE")).strip().upper()
+    rationale = str(data.get("rationale", ""))[:1000]
     try:
         verdict = Verdict(verdict_raw)
     except ValueError:
         verdict = Verdict.FALSE_POSITIVE
-    return verdict, rationale
+    try:
+        confidence = float(data.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+    return VerifyResult(verdict, rationale, confidence)

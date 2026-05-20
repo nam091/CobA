@@ -86,12 +86,14 @@ python scripts/prepare_primevul.py \
 
 ### 4.1. `cwe_kb`
 
-- **Nguồn**: <https://cwe.mitre.org/data/downloads/cwec_v4.14.xml.zip>
+- **Nguồn chính**: <https://cwe.mitre.org/data/downloads/cwec_v4.14.xml.zip>
+- **Bundled fallback (offline)**: `src/coba/data/cwe_top25.json` — ~25 CWE đã chọn lọc kèm description + language coverage + OWASP mapping. Script `scripts/build_cwe_kb.py` mặc định đọc file này, giúp prototype chạy được hoàn toàn offline.
 - **Process** (`scripts/build_cwe_kb.py`):
-  1. Parse XML → list các CWE entry.
-  2. Mỗi entry: `id`, `name`, `description`, `extended_description`, `common_consequences`, `mitigation`, `code_examples`.
+  1. Đọc nguồn: `--source` (JSON, default = bundled corpus) hoặc `--mitre-xml` (full XML).
+  2. Parse → list entry. Với XML, lấy `id`, `name`, `Description`, `Extended_Description`.
   3. Embed bằng `all-MiniLM-L6-v2`.
-  4. Lưu vào ChromaDB collection `cwe_kb`.
+  4. `upsert` vào ChromaDB collection `coba_cwe` (idempotent).
+- **Runtime**: `coba.agent.rag.load_rag_index()` ưu tiên Chroma collection nếu tồn tại; fallback về bảng built-in (~20 CWE) khi chưa build KB.
 
 ### 4.2. `cve_corpus`
 

@@ -64,7 +64,6 @@ class SemgrepRunner(SASTTool):
         cwe = None
         cwe_md = metadata.get("cwe") or metadata.get("cwe-id")
         if cwe_md:
-            # Could be a list or string like "CWE-89: SQL injection"
             cwe_str = cwe_md[0] if isinstance(cwe_md, list) else cwe_md
             cwe = cwe_str.split(":")[0].strip().upper()
             if not cwe.startswith("CWE-"):
@@ -73,6 +72,7 @@ class SemgrepRunner(SASTTool):
         return StaticHint(
             tool="semgrep",
             rule_id=r.get("check_id", "unknown"),
+            file=r.get("path"),
             line=int(r.get("start", {}).get("line", 0)),
             message=extra.get("message", "")[:500],
             cwe=cwe,

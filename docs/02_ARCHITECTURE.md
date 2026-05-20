@@ -300,6 +300,20 @@ Client    API    Orchestrator   Planner   StaticRunner   Joern    LLM-Router   R
 - **Context**: LLM hay bịa lỗ hổng, đặc biệt model nhỏ.
 - **Decision**: Mọi finding bị reject nếu (1) không có `line_start`/`line_end` hợp lệ; (2) cite CWE không tồn tại; (3) verifier không re-derive được. Detail in `docs/05_CODE_UNDERSTANDING.md` § 5.
 
+### ADR-009: Verifier emits structured `(verdict, confidence, rationale)` JSON, blended với detector confidence
+
+- **Status**: Accepted (M2)
+- **Context**: Lớp Verifier ban đầu chỉ trả `TRUE_POSITIVE | FALSE_POSITIVE`. Hai vấn đề: (i) khó rank finding khi nhiều finding cùng status; (ii) Detector và Verifier có thông tin bổ sung nhau nhưng score không được kết hợp.
+- **Decision**: Verifier prompt buộc trả strict JSON `{"verdict","confidence":0..1,"rationale"}`. Orchestrator blend confidence theo trọng số `0.4 * detector + 0.6 * verifier` (Verifier có context rộng hơn nên trọng số cao hơn). Verdict `UNVERIFIED` chỉ phát sinh khi LLM lỗi hoặc JSON hỏng.
+- **Consequences**: Finding rankable; có thể đặt threshold theo confidence để bật/tắt finding rủi ro cao. Cost không đổi (vẫn 1 LLM call/finding).
+
+### ADR-010: SAST hints mang `file` để khớp chunk theo path
+
+- **Status**: Accepted (M2)
+- **Context**: V0 chỉ khớp hint theo `line` trong một "global bucket" → tỉ lệ match sai cao khi nhiều file có cùng line number.
+- **Decision**: `StaticHint` thêm field `file`; mỗi tool wrapper (Semgrep, Bandit, Gitleaks, Joern) populate path. Orchestrator gom hint thành bucket theo path đã canonicalized (relative path resolve theo target root); bucket `_global` chỉ giữ hint mà tool không trả file.
+- **Consequences**: Detector chỉ nhận hint thực sự thuộc chunk → ít noise, tỉ lệ ground-truth match tăng. Compatible với SARIF (mỗi `result` đã có `physicalLocation.artifactLocation.uri`).
+
 ## 7. Anti-hallucination — chi tiết
 
 ```

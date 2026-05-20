@@ -55,6 +55,7 @@ class BanditRunner(SASTTool):
         return StaticHint(
             tool="bandit",
             rule_id=r.get("test_id", "B000"),
+            file=r.get("filename"),
             line=int(r.get("line_number", 0)),
             message=r.get("issue_text", "")[:500],
             cwe=cwe,
