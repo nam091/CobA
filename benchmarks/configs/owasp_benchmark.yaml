@@ -1,0 +1,7 @@
+name: coba-owasp
+dataset: owasp_benchmark
+subset: 500
+detector_profile: fast
+seed: 42
+line_tolerance: 5
+require_cwe_match: true
