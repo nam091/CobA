@@ -4,8 +4,16 @@ The eval command is intentionally light:
 
 * It loads a YAML config from ``benchmarks/configs/<name>.yaml``.
 * It resolves the dataset via :mod:`coba.eval.datasets`.
-* It invokes :func:`coba.eval.runner.run_eval` with a prediction
-  function that wraps :class:`coba.agent.loop.Orchestrator`.
+* It picks a predictor:
+
+  - ``predictor: zero`` (default) — emits no findings; useful for CI
+    smoke tests because it never touches LLMs or SAST binaries.
+  - ``predictor: orchestrator`` — wires the real
+    :class:`coba.agent.loop.Orchestrator` through
+    :class:`coba.eval.predictor.OrchestratorPredictor`. Requires either
+    a configured LLM API key or local Ollama (see ``docs/06``).
+
+* It invokes :func:`coba.eval.runner.run_eval`.
 * It writes a Markdown + JSON + HTML + CSV report into the output dir.
 
 Until real datasets are available locally, the command logs a
@@ -17,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import yaml
@@ -45,6 +54,33 @@ async def _zero_predict(_gts: list[GroundTruth]) -> list[Prediction]:
     return []
 
 
+PredictFn = Callable[[list[GroundTruth]], Awaitable[list[Prediction]]]
+
+
+def _resolve_predictor(cfg: EvalConfig, dataset_root: Path) -> PredictFn:
+    """Map ``cfg.predictor`` to an async predictor function.
+
+    Imports of the heavy ``coba.agent.loop`` module are deferred so the
+    eval CLI starts quickly even when only the zero predictor is used
+    (Orchestrator pulls in Tree-sitter, Joern, RAG, etc.).
+    """
+    name = (cfg.predictor or "zero").lower()
+    if name == "zero":
+        return _zero_predict
+    if name == "orchestrator":
+        from coba.agent.loop import Orchestrator
+        from coba.eval.predictor import OrchestratorPredictor
+
+        orchestrator = Orchestrator()
+        return OrchestratorPredictor(
+            orchestrator,
+            dataset_root=dataset_root,
+            profile=cfg.detector_profile,
+            no_cloud=cfg.no_cloud,
+        )
+    raise ValueError(f"Unknown predictor {name!r}; expected one of 'zero', 'orchestrator'.")
+
+
 async def _run_async(
     config_paths: list[Path],
     dataset_root: Path,
@@ -53,11 +89,18 @@ async def _run_async(
     runs: list[EvalRun] = []
     for cfg_path in config_paths:
         cfg = _load_yaml_config(cfg_path)
-        log.info("eval.config", config=cfg.name, dataset=cfg.dataset, subset=cfg.subset)
+        log.info(
+            "eval.config",
+            config=cfg.name,
+            dataset=cfg.dataset,
+            subset=cfg.subset,
+            predictor=cfg.predictor,
+        )
+        predict = _resolve_predictor(cfg, dataset_root)
         try:
             run = await run_eval(
                 cfg,
-                _zero_predict,
+                predict,
                 dataset_root=dataset_root,
             )
         except DatasetUnavailable as exc:

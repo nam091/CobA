@@ -70,6 +70,15 @@ class EvalConfig(BaseModel):
     seed: int = 42
     line_tolerance: int = Field(default=5, ge=0)
     require_cwe_match: bool = True
+    predictor: str = Field(
+        default="zero",
+        description=(
+            "Which predictor to use: 'zero' (no-op, default) emits an empty "
+            "finding list; 'orchestrator' wires `coba.agent.loop.Orchestrator`"
+            " through `OrchestratorPredictor` and produces real predictions."
+        ),
+    )
+    no_cloud: bool = False
 
 
 class EvalRun(BaseModel):
