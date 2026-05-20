@@ -12,6 +12,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from coba.agent.callgraph import EMPTY_CALL_GRAPH, CallGraph
 from coba.config.settings import get_settings
 from coba.tools.base import SASTTool, ToolNotInstalled
 from coba.utils.logging import get_logger
@@ -108,3 +109,36 @@ class JoernRunner(SASTTool):
             )
             for r in (data if isinstance(data, list) else [])
         ]
+
+    async def extract_call_graph(self, target: Path) -> CallGraph:
+        """Build the CPG (cached) then run ``call_graph.sc`` over it.
+
+        On any failure (Joern missing, CPG build fails, script error,
+        non-JSON output) returns an empty :class:`CallGraph`. The
+        chunker degrades gracefully without it; this method is therefore
+        always safe to call.
+        """
+        if not self.installed():
+            log.info("joern.callgraph_skipped", reason="not_installed")
+            return EMPTY_CALL_GRAPH
+        cpg = await self.build_cpg(target)
+        if cpg is None:
+            return EMPTY_CALL_GRAPH
+        query_script = Path(__file__).parent / "joern_queries" / "call_graph.sc"
+        if not query_script.exists():
+            log.warning("joern.callgraph_missing_script", script=str(query_script))
+            return EMPTY_CALL_GRAPH
+        rc, stdout, stderr = await self._run_subprocess(
+            [self.binary, "--script", str(query_script), "--param", f"cpg={cpg}"],
+            timeout=300.0,
+        )
+        if rc != 0:
+            log.warning(
+                "joern.callgraph_query_failed",
+                rc=rc,
+                stderr=stderr[:200].decode(errors="ignore"),
+            )
+            return EMPTY_CALL_GRAPH
+        graph = CallGraph.from_json(stdout)
+        log.info("joern.callgraph_built", n_functions=graph.n_functions)
+        return graph

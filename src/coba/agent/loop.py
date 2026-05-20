@@ -8,6 +8,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from coba.agent.callgraph import EMPTY_CALL_GRAPH, CallGraph
 from coba.agent.detector import Detector
 from coba.agent.planner import Planner
 from coba.agent.rag import RagIndex, load_rag_index
@@ -65,10 +66,16 @@ class Orchestrator:
         stats = ScanStats()
         timings: dict[str, float] = {}
 
+        # 0) (Optional) Build a Joern call graph for CPG-aware context.
+        #    Always safe: returns EMPTY_CALL_GRAPH if Joern is not available.
+        t0 = time.perf_counter()
+        call_graph = await self._build_call_graph(target)
+        timings["callgraph"] = time.perf_counter() - t0
+
         # 1) Plan ----------------------------------------------------------
         t0 = time.perf_counter()
         planner = Planner(languages=request.languages or None)
-        files, chunks = planner.plan(target)
+        files, chunks = planner.plan(target, call_graph=call_graph)
         stats.n_files = len(files)
         stats.n_chunks = len(chunks)
         timings["plan"] = time.perf_counter() - t0
@@ -126,6 +133,30 @@ class Orchestrator:
         if request.git_url:
             raise NotImplementedError("git clone path not implemented in v0")
         raise ValueError("ScanRequest must provide target_path or git_url")
+
+    async def _build_call_graph(self, target: Path) -> CallGraph:
+        """Best-effort: extract a call graph via Joern. Falls back to empty.
+
+        Joern is the only tool currently capable of producing a usable call
+        graph for all four supported languages. We skip the step (returning
+        :data:`EMPTY_CALL_GRAPH`) when:
+
+        * Joern is not installed on this machine;
+        * the CPG build fails or times out;
+        * the call-graph script produces non-JSON output.
+
+        See ``src/coba/tools/joern_queries/call_graph.sc``.
+        """
+        joern: JoernRunner | None = next(
+            (t for t in self.tools if isinstance(t, JoernRunner)), None
+        )
+        if joern is None:
+            return EMPTY_CALL_GRAPH
+        try:
+            return await joern.extract_call_graph(target)
+        except Exception as exc:  # pragma: no cover - defensive
+            log.warning("orchestrator.callgraph_failed", error=str(exc))
+            return EMPTY_CALL_GRAPH
 
     async def _run_static(self, target: Path) -> dict[str, list[StaticHint]]:
         """Run each SAST tool and group hints by file (with a global bucket for hints

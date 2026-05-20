@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from coba.agent.callgraph import CallGraph
 from coba.agent.chunker import chunk_file
 from coba.config.settings import get_settings
 from coba.utils.logging import get_logger
@@ -86,11 +87,11 @@ class Planner:
             return False
         return True
 
-    def chunk_files(self, files: list[Path]) -> list[Chunk]:
+    def chunk_files(self, files: list[Path], *, call_graph: CallGraph | None = None) -> list[Chunk]:
         all_chunks: list[Chunk] = []
         for f in files:
             try:
-                all_chunks.extend(chunk_file(f))
+                all_chunks.extend(chunk_file(f, call_graph=call_graph))
             except Exception as exc:  # pragma: no cover
                 log.warning("planner.chunk_failed", file=str(f), error=str(exc))
         return all_chunks
@@ -107,8 +108,15 @@ class Planner:
             _ = hot_files
         return chunks
 
-    def plan(self, target: Path) -> tuple[list[Path], list[Chunk]]:
+    def plan(
+        self, target: Path, *, call_graph: CallGraph | None = None
+    ) -> tuple[list[Path], list[Chunk]]:
         files = self.discover_files(target)
-        chunks = self.chunk_files(files)
-        log.info("planner.done", n_files=len(files), n_chunks=len(chunks))
+        chunks = self.chunk_files(files, call_graph=call_graph)
+        log.info(
+            "planner.done",
+            n_files=len(files),
+            n_chunks=len(chunks),
+            cg_enriched=call_graph.n_functions if call_graph else 0,
+        )
         return files, chunks
