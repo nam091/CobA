@@ -1,0 +1,18 @@
+{# version: 2025-01.v1 — Verifier prompt #}
+A detector LLM claimed the following finding. Re-derive the data flow yourself
+from the code; if you cannot, return FALSE_POSITIVE.
+
+FINDING CLAIM:
+{{finding | tojson}}
+
+CODE (file {{chunk.file}}, function {{chunk.function or "(top-level)"}}, lines {{chunk.line_start}}–{{chunk.line_end}}):
+```{{chunk.language.value}}
+{{body}}
+```
+
+Respond with strict JSON:
+{
+  "verdict":    "TRUE_POSITIVE" | "FALSE_POSITIVE",
+  "confidence": 0.0–1.0,
+  "rationale":  "≤ 100 words; cite specific lines."
+}
