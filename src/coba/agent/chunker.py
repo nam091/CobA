@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from coba.agent.callgraph import CallGraph
 from coba.utils.logging import get_logger
 from coba.utils.schemas import Chunk, Language
 
@@ -122,14 +123,36 @@ def _window_chunks(
     return chunks
 
 
+def _enrich_with_callgraph(chunks: list[Chunk], cg: CallGraph | None) -> None:
+    """Populate ``callers`` and ``callees`` in-place on function chunks."""
+    if cg is None:
+        return
+    for ch in chunks:
+        if ch.function is None:
+            continue
+        callees = cg.callees(ch.file, ch.function)
+        callers = cg.callers(ch.file, ch.function)
+        if callees:
+            ch.callees = callees[:20]
+        if callers:
+            ch.callers = callers[:20]
+
+
 def chunk_file(
     file: Path,
     *,
     max_chars: int = 8000,
     window_lines: int = 200,
     window_overlap: int = 30,
+    call_graph: CallGraph | None = None,
 ) -> list[Chunk]:
-    """Chunk a source file into LLM-friendly units."""
+    """Chunk a source file into LLM-friendly units.
+
+    When ``call_graph`` is provided, each function-level :class:`Chunk`
+    is enriched with ``callers`` / ``callees`` so the Detector LLM gets
+    inter-procedural context. The window-based fallback chunks remain
+    unenriched (no function identity to look up).
+    """
     lang = Language.from_path(str(file))
     try:
         text = file.read_text(encoding="utf-8", errors="ignore")
@@ -168,4 +191,5 @@ def chunk_file(
 
     if not chunks:
         chunks = _window_chunks(file, lang, text, window_lines, window_overlap)
+    _enrich_with_callgraph(chunks, call_graph)
     return chunks

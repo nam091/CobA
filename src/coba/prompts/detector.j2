@@ -22,6 +22,16 @@ Imports:
 {% for imp in chunk.imports %}{{imp}}
 {% endfor %}
 {% endif %}
+{% if chunk.callers %}
+Callers (functions that invoke this one — input may come from them):
+{% for c in chunk.callers %}- {{c}}
+{% endfor %}
+{% endif %}
+{% if chunk.callees %}
+Callees (functions invoked from this one — data may flow into them):
+{% for c in chunk.callees %}- {{c}}
+{% endfor %}
+{% endif %}
 
 CODE:
 ```{{chunk.language.value}}
