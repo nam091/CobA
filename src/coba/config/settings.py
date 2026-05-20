@@ -27,7 +27,17 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     google_api_key: str | None = None
 
-    # --- Ollama (local) ------------------------------------------------------
+    # --- LLM custom endpoints (OpenAI / Anthropic compatible APIs) ----------
+    # When set, the corresponding provider routes through the custom base URL
+    # instead of the vendor's default. This unlocks OpenAI-compatible gateways
+    # such as OpenRouter, Together, Groq, vLLM, LiteLLM, DeepSeek, Mistral, or
+    # an Ollama instance exposing the `/v1/chat/completions` endpoint. The
+    # provider also relaxes its `supports()` check so arbitrary model ids
+    # (e.g. ``meta-llama/Llama-3.1-8B-Instruct``) can be routed.
+    openai_base_url: str | None = None
+    anthropic_base_url: str | None = None
+
+    # --- Ollama (local, native /api/chat protocol) ---------------------------
     ollama_base_url: str = "http://localhost:11434"
     ollama_default_model: str = "qwen2.5-coder:7b"
 
