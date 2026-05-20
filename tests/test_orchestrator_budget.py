@@ -48,23 +48,23 @@ class _StubDetector:
         ]
 
 
+class _Cost:
+    """Minimal CostTracker stand-in with the ``.spent`` property."""
+
+    def __init__(self) -> None:
+        self._spent = 0.0
+
+    @property
+    def spent(self) -> float:
+        return self._spent
+
+
 def _orch_with_budget(budget: float, parallel: int = 1) -> Orchestrator:
     orch = Orchestrator.__new__(Orchestrator)
     orch.settings = SimpleNamespace(
         coba_scan_budget_usd=budget,
         coba_parallel_llm_calls=parallel,
     )
-    cost = SimpleNamespace(_spent=0.0)
-
-    # CostTracker uses a property — emulate with a dynamic attribute.
-    class _Cost:
-        def __init__(self) -> None:
-            self._spent = 0.0
-
-        @property
-        def spent(self) -> float:
-            return self._spent
-
     orch.router = SimpleNamespace(cost=_Cost())
     orch.detector = _StubDetector(orch.router)
     return orch
