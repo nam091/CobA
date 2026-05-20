@@ -9,14 +9,35 @@ from __future__ import annotations
 import re
 
 _PROMPT_INJECTION_PATTERNS = [
-    re.compile(r"(?i)ignore (the |all )?(previous|prior|above) instructions?"),
-    re.compile(r"(?i)you are now [a-zA-Z ]{0,40}"),
-    re.compile(r"(?i)act as [a-zA-Z ]{0,40}"),
-    re.compile(r"(?i)disregard (the |any )?(rules|guidelines|policy)"),
+    re.compile(r"(?i)ignore (the |all |any )?(previous|prior|above|earlier) instructions?"),
+    re.compile(
+        r"(?i)forget (the |all |any )?(previous|prior|above|earlier) (instructions?|prompts?)"
+    ),
+    re.compile(r"(?i)you are now [a-zA-Z0-9 _,-]{0,80}"),
+    re.compile(r"(?i)you('?re|'? are) now [a-zA-Z0-9 _,-]{0,80}"),
+    re.compile(r"(?i)act as (a|an|the)? ?[a-zA-Z0-9 _-]{0,60}"),
+    re.compile(r"(?i)disregard (the |any |all )?(rules|guidelines|policy|policies|safety)"),
+    re.compile(r"(?i)system prompt(?: is)?:[^\n]{0,200}"),
+    re.compile(r"(?i)\[/?(?:system|assistant|user)\]"),
+    re.compile(r"(?i)<\|im_(?:start|end)\|>[^\n]{0,40}"),
+    re.compile(r"(?i)<\|(?:system|user|assistant)\|>"),
+    re.compile(r"(?i)```\s*system\b[^`]{0,200}```"),
+    re.compile(r"(?i)respond (only )?with[^\n]{0,80}(true_positive|false_positive)"),
+    re.compile(r"(?i)reveal (your |the )?(system )?prompt"),
+    re.compile(r"(?i)print (your |the )?(system )?(prompt|instructions?)"),
 ]
 
 # Markers we use ourselves in prompts; if seen in code, neutralize them.
-_OUR_MARKERS = ("<cwe_context>", "</cwe_context>", "<examples>", "</examples>")
+_OUR_MARKERS = (
+    "<cwe_context>",
+    "</cwe_context>",
+    "<examples>",
+    "</examples>",
+    "<chunk>",
+    "</chunk>",
+    "<finding>",
+    "</finding>",
+)
 
 
 def sanitize_code_for_prompt(code: str, max_chars: int = 8000) -> str:

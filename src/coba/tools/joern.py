@@ -100,6 +100,7 @@ class JoernRunner(SASTTool):
             StaticHint(
                 tool="joern",
                 rule_id="taint:exec_of_string",
+                file=r.get("file"),
                 line=int(r.get("line", 0)),
                 message=r.get("message", "Tainted data reaches exec-like sink"),
                 cwe="CWE-78",

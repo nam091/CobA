@@ -58,6 +58,7 @@ class GitleaksRunner(SASTTool):
         return StaticHint(
             tool="gitleaks",
             rule_id=r.get("RuleID", "unknown"),
+            file=r.get("File"),
             line=int(r.get("StartLine", 0)),
             message=f"Hard-coded secret detected: {r.get('Description', '')}"[:500],
             cwe="CWE-798",

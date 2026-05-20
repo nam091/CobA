@@ -149,10 +149,14 @@ _BUILTIN_CWES: list[RagSnippet] = [
 
 
 class RagIndex:
-    """Lookup CWE entries by id or text similarity (substring for the v0 builtin)."""
+    """Lookup CWE entries by id or text similarity.
 
-    def __init__(self) -> None:
-        self._cwes = {c.cwe_id: c for c in _BUILTIN_CWES}
+    Default is a tiny in-memory built-in. Call :func:`load_rag_index` to get a
+    Chroma-backed index if the KB has been built with ``scripts/build_cwe_kb.py``.
+    """
+
+    def __init__(self, entries: list[RagSnippet] | None = None) -> None:
+        self._cwes = {c.cwe_id: c for c in (entries or _BUILTIN_CWES)}
 
     def by_cwe(self, cwe_id: str) -> RagSnippet | None:
         return self._cwes.get(cwe_id)
@@ -172,3 +176,76 @@ class RagIndex:
                 scored.append((score, cwe))
         scored.sort(key=lambda x: x[0], reverse=True)
         return [c for _, c in scored[:top_k]] or list(self._cwes.values())[:top_k]
+
+
+class ChromaRagIndex(RagIndex):
+    """RAG index backed by a persistent ChromaDB collection.
+
+    Falls back to the in-memory builtin when chroma is unavailable so the
+    Agent loop never crashes during tests / offline development.
+    """
+
+    COLLECTION_NAME = "coba_cwe"
+
+    def __init__(self, persist_dir: str, embedding_model: str) -> None:
+        super().__init__()
+        self._collection = None
+        try:
+            import chromadb
+            from chromadb.config import Settings as ChromaSettings
+            from chromadb.utils.embedding_functions import (
+                SentenceTransformerEmbeddingFunction,
+            )
+
+            client = chromadb.PersistentClient(
+                path=persist_dir,
+                settings=ChromaSettings(anonymized_telemetry=False),
+            )
+            embedder = SentenceTransformerEmbeddingFunction(model_name=embedding_model)
+            self._collection = client.get_or_create_collection(
+                self.COLLECTION_NAME,
+                embedding_function=embedder,  # type: ignore[arg-type]
+            )
+            log.info("rag.chroma_loaded", persist_dir=persist_dir)
+        except Exception as exc:  # pragma: no cover - depends on optional deps
+            log.warning("rag.chroma_unavailable", error=str(exc))
+            self._collection = None
+
+    def query(self, hints: list[str], top_k: int = 3) -> list[RagSnippet]:
+        if self._collection is None or not hints:
+            return super().query(hints, top_k)
+        try:
+            results = self._collection.query(query_texts=[" ".join(hints)], n_results=top_k)
+        except Exception as exc:  # pragma: no cover
+            log.warning("rag.chroma_query_failed", error=str(exc))
+            return super().query(hints, top_k)
+        ids = (results.get("ids") or [[]])[0]
+        documents = (results.get("documents") or [[]])[0]
+        metadatas = (results.get("metadatas") or [[]])[0]
+        out: list[RagSnippet] = []
+        for cid, doc, meta in zip(ids, documents, metadatas, strict=False):
+            out.append(
+                RagSnippet(
+                    kind="cwe",
+                    cwe_id=str(meta.get("cwe_id") or cid),
+                    title=str(meta.get("name") or cid),
+                    text=str(doc or ""),
+                )
+            )
+        return out or super().query(hints, top_k)
+
+
+def load_rag_index() -> RagIndex:
+    """Return a Chroma-backed index if the KB exists, else the in-memory builtin.
+
+    The Chroma KB is produced by ``scripts/build_cwe_kb.py`` and persisted to
+    ``settings.chroma_persist_dir``.
+    """
+    from coba.config.settings import get_settings
+
+    settings = get_settings()
+    persist_dir = settings.chroma_persist_dir
+    if not persist_dir.exists() or not any(persist_dir.iterdir()):
+        log.info("rag.fallback_builtin", reason="chroma_dir_empty")
+        return RagIndex()
+    return ChromaRagIndex(str(persist_dir), settings.embedding_model)

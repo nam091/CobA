@@ -1,0 +1,177 @@
+[
+  {
+    "cwe_id": "CWE-79",
+    "name": "Cross-site Scripting (XSS)",
+    "description": "The product receives untrusted input and incorporates it into a web page that is served to other users without proper escaping. Reflected, stored, and DOM variants exist; all enable execution of attacker-controlled script in the victim's browser. Mitigation: context-aware output encoding, Content-Security-Policy, framework-provided escaping primitives.",
+    "languages": ["javascript", "typescript", "python", "java"],
+    "owasp": "A03:2021 Injection"
+  },
+  {
+    "cwe_id": "CWE-89",
+    "name": "SQL Injection",
+    "description": "User-controlled data is concatenated into SQL statements, allowing attackers to alter query semantics, exfiltrate data, or modify rows. Mitigation: parameterized queries / prepared statements; never build SQL via string concatenation.",
+    "languages": ["python", "java", "javascript", "c", "cpp"],
+    "owasp": "A03:2021 Injection"
+  },
+  {
+    "cwe_id": "CWE-78",
+    "name": "OS Command Injection",
+    "description": "User-controlled data is passed unescaped to an OS shell or command interpreter, allowing arbitrary command execution. Mitigation: avoid invoking a shell (use exec-family APIs with argv lists); never use shell=True with concatenated input.",
+    "languages": ["python", "java", "javascript", "c", "cpp"],
+    "owasp": "A03:2021 Injection"
+  },
+  {
+    "cwe_id": "CWE-22",
+    "name": "Path Traversal",
+    "description": "Untrusted input is used to construct file paths, allowing access to files outside the intended directory using sequences like '..' or absolute paths. Mitigation: canonicalize the path and verify it lives under an allow-listed root.",
+    "languages": ["python", "java", "javascript", "c", "cpp"],
+    "owasp": "A01:2021 Broken Access Control"
+  },
+  {
+    "cwe_id": "CWE-94",
+    "name": "Improper Control of Generation of Code (Code Injection)",
+    "description": "The product evaluates untrusted input as code, e.g. via eval() / exec() / pickle / Function constructor. Mitigation: eliminate dynamic evaluation; if absolutely required, use a sandboxed parser with an allow-list.",
+    "languages": ["python", "javascript", "java"],
+    "owasp": "A03:2021 Injection"
+  },
+  {
+    "cwe_id": "CWE-502",
+    "name": "Deserialization of Untrusted Data",
+    "description": "Deserializing data from untrusted sources allows attackers to instantiate arbitrary objects, run gadget chains, or trigger RCE. Mitigation: avoid binary deserialization of untrusted data; if unavoidable, sign the payload and use safe loaders (yaml.safe_load, json).",
+    "languages": ["python", "java", "javascript"],
+    "owasp": "A08:2021 Software and Data Integrity Failures"
+  },
+  {
+    "cwe_id": "CWE-611",
+    "name": "XML External Entity (XXE)",
+    "description": "An XML parser resolves external entity references in untrusted XML, enabling SSRF, file disclosure, or DoS. Mitigation: disable DTD processing and external entity resolution in the XML parser.",
+    "languages": ["java", "python", "c", "cpp"],
+    "owasp": "A05:2021 Security Misconfiguration"
+  },
+  {
+    "cwe_id": "CWE-918",
+    "name": "Server-Side Request Forgery (SSRF)",
+    "description": "The server fetches a URL whose target is influenced by user input, allowing attackers to reach internal services or metadata endpoints. Mitigation: allow-list outbound hosts; block link-local / internal ranges; resolve DNS and re-verify after.",
+    "languages": ["python", "javascript", "java"],
+    "owasp": "A10:2021 SSRF"
+  },
+  {
+    "cwe_id": "CWE-327",
+    "name": "Use of Broken or Risky Cryptographic Algorithm",
+    "description": "The product uses cryptographic primitives that are broken (MD5, SHA1, DES, RC4) or used in unsafe modes (ECB). Mitigation: prefer AES-GCM, SHA-256+, and password hashes like Argon2id / bcrypt.",
+    "languages": ["python", "java", "c", "cpp", "javascript"],
+    "owasp": "A02:2021 Cryptographic Failures"
+  },
+  {
+    "cwe_id": "CWE-330",
+    "name": "Use of Insufficiently Random Values",
+    "description": "Security-sensitive code uses non-cryptographic PRNGs (random.random, Math.random, rand) where unpredictability is required. Mitigation: use secrets / SecureRandom / crypto.randomBytes.",
+    "languages": ["python", "java", "javascript", "c", "cpp"],
+    "owasp": "A02:2021 Cryptographic Failures"
+  },
+  {
+    "cwe_id": "CWE-798",
+    "name": "Use of Hard-coded Credentials",
+    "description": "API keys, tokens, or passwords are embedded directly in source code, allowing trivial extraction via git history, decompilation, or memory dumps. Mitigation: load credentials from environment / secret managers; rotate any exposed key.",
+    "languages": ["python", "java", "javascript", "c", "cpp"],
+    "owasp": "A07:2021 Identification and Authentication Failures"
+  },
+  {
+    "cwe_id": "CWE-352",
+    "name": "Cross-Site Request Forgery (CSRF)",
+    "description": "State-changing endpoints accept requests authenticated only via ambient cookies, allowing attackers to issue actions on behalf of victims. Mitigation: SameSite cookies + anti-CSRF tokens + require Origin/Referer checks.",
+    "languages": ["python", "java", "javascript"],
+    "owasp": "A01:2021 Broken Access Control"
+  },
+  {
+    "cwe_id": "CWE-862",
+    "name": "Missing Authorization",
+    "description": "An endpoint or function is accessible without checking that the caller is permitted to perform the action. Mitigation: deny-by-default authorization middleware; centralize policy checks.",
+    "languages": ["python", "java", "javascript"],
+    "owasp": "A01:2021 Broken Access Control"
+  },
+  {
+    "cwe_id": "CWE-863",
+    "name": "Incorrect Authorization",
+    "description": "Authorization logic exists but is incorrect, e.g. comparing user-controlled IDs without role checks (IDOR), or relying on client-sent role claims. Mitigation: centralize and unit-test authorization decisions.",
+    "languages": ["python", "java", "javascript"],
+    "owasp": "A01:2021 Broken Access Control"
+  },
+  {
+    "cwe_id": "CWE-287",
+    "name": "Improper Authentication",
+    "description": "Authentication is missing, weak, or bypassable, e.g. password compared with == (timing leak), no rate limiting, or accepting empty credentials. Mitigation: use vetted auth libraries; constant-time compare; enforce MFA and lockout.",
+    "languages": ["python", "java", "javascript"],
+    "owasp": "A07:2021 Identification and Authentication Failures"
+  },
+  {
+    "cwe_id": "CWE-434",
+    "name": "Unrestricted Upload of File with Dangerous Type",
+    "description": "Uploads accept arbitrary file types or names, which may be served or executed by the host. Mitigation: validate content-type AND extension AND magic bytes; store outside webroot; serve via a non-executing handler.",
+    "languages": ["python", "java", "javascript"],
+    "owasp": "A04:2021 Insecure Design"
+  },
+  {
+    "cwe_id": "CWE-787",
+    "name": "Out-of-bounds Write",
+    "description": "Writing past the end of a buffer, typically via strcpy/sprintf/gets or manual pointer arithmetic, leads to memory corruption and RCE. Mitigation: use bounded copy APIs (snprintf, strlcpy); enable stack canaries / ASAN.",
+    "languages": ["c", "cpp"],
+    "owasp": "A06:2021 Vulnerable and Outdated Components"
+  },
+  {
+    "cwe_id": "CWE-125",
+    "name": "Out-of-bounds Read",
+    "description": "Reading past a buffer boundary leaks adjacent memory, e.g. Heartbleed. Mitigation: bound-check indices against length before dereferencing; use slices / spans where available.",
+    "languages": ["c", "cpp"],
+    "owasp": "A06:2021 Vulnerable and Outdated Components"
+  },
+  {
+    "cwe_id": "CWE-416",
+    "name": "Use After Free",
+    "description": "A pointer is dereferenced after the underlying memory has been freed, enabling type confusion, RCE, or info disclosure. Mitigation: null out pointers after free; use RAII / smart pointers; enable ASAN in tests.",
+    "languages": ["c", "cpp"],
+    "owasp": "A06:2021 Vulnerable and Outdated Components"
+  },
+  {
+    "cwe_id": "CWE-476",
+    "name": "NULL Pointer Dereference",
+    "description": "Dereferencing a NULL pointer causes a crash and may be triggerable remotely. Mitigation: check return values from allocators / lookups; treat unchecked nullability as a bug, not a warning.",
+    "languages": ["c", "cpp", "java"],
+    "owasp": "A04:2021 Insecure Design"
+  },
+  {
+    "cwe_id": "CWE-918:LFI",
+    "name": "Local File Inclusion (subset of SSRF/Path Traversal)",
+    "description": "User input controls a path that the server reads or includes, potentially exposing /etc/passwd or executing application-controlled scripts. Mitigation: allow-list templates; never use raw input as a filename.",
+    "languages": ["python", "javascript", "java"],
+    "owasp": "A01:2021 Broken Access Control"
+  },
+  {
+    "cwe_id": "CWE-209",
+    "name": "Information Exposure Through Error Messages",
+    "description": "Stack traces, SQL fragments, or framework debug pages are returned to untrusted users, revealing internal structure that aids further attack. Mitigation: catch-all error handler; log details server-side; show generic message to user.",
+    "languages": ["python", "java", "javascript"],
+    "owasp": "A04:2021 Insecure Design"
+  },
+  {
+    "cwe_id": "CWE-200",
+    "name": "Exposure of Sensitive Information to an Unauthorized Actor",
+    "description": "Sensitive data (PII, tokens, secrets) is returned in API responses, logs, or URLs where unauthorized parties can read it. Mitigation: serialize models with explicit allow-listed fields; redact logs.",
+    "languages": ["python", "java", "javascript"],
+    "owasp": "A02:2021 Cryptographic Failures"
+  },
+  {
+    "cwe_id": "CWE-601",
+    "name": "Open Redirect",
+    "description": "A redirect URL parameter is taken directly from user input, allowing phishing via a trusted host. Mitigation: allow-list internal paths only; refuse cross-origin redirects.",
+    "languages": ["python", "java", "javascript"],
+    "owasp": "A01:2021 Broken Access Control"
+  },
+  {
+    "cwe_id": "CWE-732",
+    "name": "Incorrect Permission Assignment for Critical Resource",
+    "description": "Files / sockets / IPC objects are created with overly broad permissions (e.g. 0o777, world-writable), allowing tampering. Mitigation: principle of least privilege; explicit umask; chmod after creation.",
+    "languages": ["python", "java", "c", "cpp"],
+    "owasp": "A05:2021 Security Misconfiguration"
+  }
+]

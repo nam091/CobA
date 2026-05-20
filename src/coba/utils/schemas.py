@@ -100,6 +100,7 @@ class StaticHint(BaseModel):
 
     tool: str
     rule_id: str
+    file: str | None = None
     line: int
     message: str
     cwe: str | None = None
